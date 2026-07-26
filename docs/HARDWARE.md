@@ -88,6 +88,108 @@ adjustable (e.g. trimmer-pot gain) op-amp stage first, verify the output
 range on a bench meter/scope with nothing else connected, and only then
 wire it to the projector.
 
+## Full connection diagram: receiver to DB25 ILDA connector
+
+This ties together the ESP32 GPIO table above, the DAC banks, the op-amp
+scaling stage, and the DB25 pins from `docs/ILDA_INTERFACE.md`. It assumes
+the single-ended front end noted there (drive each `+` pin, tie the matching
+`-` pin to signal ground) - confirm that assumption holds for your DS-1000RGB
+before wiring.
+
+```mermaid
+flowchart LR
+    subgraph ESP32["ESP32 (receiver)"]
+        SCK["GPIO18 SCK"]
+        MOSI["GPIO23 MOSI"]
+        CS1["GPIO5 CS"]
+        CS2["GPIO17 CS"]
+        CS3["GPIO16 CS"]
+        LDAC["GPIO4 LDAC"]
+        SHUT["GPIO15 Shutter TTL"]
+    end
+
+    subgraph DAC["3x MCP4922 (shared SPI bus + LDAC)"]
+        DAC1["DAC1\nChA = X, ChB = Y"]
+        DAC2["DAC2\nChA = R, ChB = G"]
+        DAC3["DAC3\nChA = B, ChB = spare"]
+    end
+
+    subgraph OPAMP["Op-amp scaling stage (see above)"]
+        OX["X scale/shift\n(bipolar)"]
+        OY["Y scale/shift\n(bipolar)"]
+        OR["R scale\n(unipolar)"]
+        OG["G scale\n(unipolar)"]
+        OB["B scale\n(unipolar)"]
+        OSHUT["Shutter buffer\n(logic level check)"]
+    end
+
+    subgraph DB25["ILDA DB25 connector"]
+        P14["Pin 14  X+"]
+        P2["Pin 2  X-"]
+        P15["Pin 15  Y+"]
+        P3["Pin 3  Y-"]
+        P16["Pin 16  Red+"]
+        P4["Pin 4  Red-"]
+        P17["Pin 17  Green+"]
+        P5["Pin 5  Green-"]
+        P18["Pin 18  Blue+"]
+        P6["Pin 6  Blue-"]
+        P20["Pin 20  Shutter"]
+        PGND["Pins 1, 8, 9, 10  Ground"]
+        PINT["Pins 21, 22  Interlock loop\n(NOT connected to ESP32)"]
+    end
+
+    SCK --- DAC1
+    SCK --- DAC2
+    SCK --- DAC3
+    MOSI --- DAC1
+    MOSI --- DAC2
+    MOSI --- DAC3
+    CS1 --- DAC1
+    CS2 --- DAC2
+    CS3 --- DAC3
+    LDAC --- DAC1
+    LDAC --- DAC2
+    LDAC --- DAC3
+
+    DAC1 -- "ChA (X)" --> OX --> P14
+    DAC1 -- "ChB (Y)" --> OY --> P15
+    DAC2 -- "ChA (R)" --> OR --> P16
+    DAC2 -- "ChB (G)" --> OG --> P17
+    DAC3 -- "ChA (B)" --> OB --> P18
+    SHUT --> OSHUT --> P20
+
+    P2 -.-> PGND
+    P3 -.-> PGND
+    P4 -.-> PGND
+    P5 -.-> PGND
+    P6 -.-> PGND
+```
+
+Ground rule for the dotted lines above: `X-`/`Y-`/`R-`/`G-`/`B-` tie to
+signal ground (same ground as `PGND`/pins 1, 8, 9, 10), not to the ESP32's
+own logic ground directly - route everything through a single star ground
+point at the front end to avoid ground-loop noise on the analog lines.
+
+| From | Through | To (DB25 pin) |
+|------|---------|----------------|
+| DAC1 channel A (X, from ESP32 GPIO5 CS + shared SCK/MOSI/LDAC) | X op-amp scaling stage | Pin 14 (X+) |
+| DAC1 channel B (Y) | Y op-amp scaling stage | Pin 15 (Y+) |
+| DAC2 channel A (R, from ESP32 GPIO17 CS) | R op-amp scaling stage | Pin 16 (Red+) |
+| DAC2 channel B (G) | G op-amp scaling stage | Pin 17 (Green+) |
+| DAC3 channel A (B, from ESP32 GPIO16 CS) | B op-amp scaling stage | Pin 18 (Blue+) |
+| DAC3 channel B | spare - leave unconnected | - |
+| ESP32 GPIO15 (shutter TTL) | shutter buffer stage | Pin 20 (Shutter) |
+| Signal ground | star ground at the front end | Pins 1, 8, 9, 10, and the `X-`/`Y-`/`R-`/`G-`/`B-` pins (2, 3, 4, 5, 6) |
+| *(nothing from the ESP32)* | external interlock loop wiring only | Pins 21, 22 (interlock) - see `docs/SAFETY.md` |
+
+The "shutter buffer stage" is deliberately not specified as a direct
+GPIO-to-pin wire: confirm what logic level and polarity the DS-1000RGB's
+shutter input actually expects (some ILDA shutter inputs are open-collector
+or pulled up rather than a straightforward 3.3V/5V TTL input) before deciding
+whether a plain GPIO connection, a level shifter, or a simple transistor
+buffer is needed.
+
 ## Point rate expectations
 
 SPI at a few MHz plus the 6 per-point SPI transactions (X, Y, R, G, B, plus

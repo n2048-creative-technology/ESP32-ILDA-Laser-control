@@ -27,7 +27,21 @@ docs/
   ILDA_INTERFACE.md        DB25 pinout reference (verify against your unit's manual)
   HARDWARE.md             DAC/op-amp analog front-end reference design + BOM
   PROTOCOL.md             ESP-NOW packet format and design rationale
+scripts/
+  build_all.sh            Builds every firmware/* PlatformIO project
+  test_espnow_link.py      Hardware-in-the-loop test of the sender<->receiver link
+kicad/                    KiCad schematic/PCB projects (empty for now)
+openscad/                 OpenSCAD sources for mechanical parts (empty for now)
+blender/                  Blender project files (empty for now)
+3d_models/                Exported/printable model files (empty for now)
+images/                   Photos, renders, diagrams (empty for now)
+tools/                    Standalone utility programs, if any get built (empty for now)
 ```
+
+See `CLAUDE.md` for the working conventions this project (and future ones in
+this account) follow: always build firmware before calling a change done,
+verify library/framework compatibility, and always have some automated way
+to verify device-to-device communication.
 
 ## Status / scope
 
@@ -56,6 +70,22 @@ pio run -t upload -t monitor
 Both boards must agree on `WIFI_CHANNEL` (default channel 1, set in each
 `include/config.h`) and, before wiring to a real projector, you'll want the
 DAC/op-amp front end from `docs/HARDWARE.md` connected to the receiver.
+
+Before doing anything else with newly-flashed firmware, build it and check
+the two boards actually talk to each other:
+
+```sh
+scripts/build_all.sh                # builds both firmware/receiver and firmware/sender
+pip install pyserial                # once, if not already installed
+python3 scripts/test_espnow_link.py --sender /dev/ttyUSB0 --receiver /dev/ttyUSB1
+```
+
+`test_espnow_link.py` drives the sender over serial and checks the
+receiver's status log to confirm the ESP-NOW link comes up, pattern/shutter
+commands are received correctly, and - by using the sender's `halt`/`resume`
+test commands - that the receiver's link-loss watchdog actually trips and
+recovers as documented in `docs/SAFETY.md`. Adjust the port names for your
+OS (e.g. `COM5`/`COM6` on Windows).
 
 Out of the box (no front end connected), you can still exercise the whole
 link over the sender's serial console:

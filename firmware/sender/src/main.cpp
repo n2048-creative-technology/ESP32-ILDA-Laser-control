@@ -28,6 +28,12 @@ static uint16_t g_frameId = 0;
 
 static uint8_t g_color_r = 255, g_color_g = 255, g_color_b = 255;
 
+// When false, the periodic frame/control transmission in loop() is paused.
+// Exists purely for scripted testing (see scripts/test_espnow_link.py) so
+// the receiver's link-loss watchdog can be exercised deterministically over
+// serial, without physically unplugging a board.
+static bool g_txEnabled = true;
+
 // ---------------------------------------------------------------------------
 // Local pattern generation. These fill g_patternPoints/g_patternCount; the
 // receiver just displays whatever it's told (it also has its own built-in
@@ -155,6 +161,8 @@ static void printHelp() {
       "  brightness <0-255>\n"
       "  color <r> <g> <b>            (0-255 each, applied to the next locally-generated pattern)\n"
       "  pps <100-30000>              (points per second)\n"
+      "  halt                         (pause ESP-NOW transmission - for testing the receiver's link-loss watchdog)\n"
+      "  resume                       (resume ESP-NOW transmission after 'halt')\n"
       "  status\n"
       "  help\n"));
 }
@@ -181,6 +189,12 @@ static void handleCommand(String line) {
     printHelp();
   } else if (cmd == "status") {
     printStatus();
+  } else if (cmd == "halt") {
+    g_txEnabled = false;
+    Serial.println("tx=halted");
+  } else if (cmd == "resume") {
+    g_txEnabled = true;
+    Serial.println("tx=resumed");
   } else if (cmd == "shutter") {
     rest.trim();
     rest.toLowerCase();
@@ -296,12 +310,14 @@ void loop() {
   static uint32_t lastControlSend = 0;
   uint32_t now = millis();
 
-  if (now - lastFrameSend >= FRAME_RESEND_INTERVAL_MS) {
-    lastFrameSend = now;
-    sendFrame();
-  }
-  if (now - lastControlSend >= CONTROL_SEND_INTERVAL_MS) {
-    lastControlSend = now;
-    sendControl();
+  if (g_txEnabled) {
+    if (now - lastFrameSend >= FRAME_RESEND_INTERVAL_MS) {
+      lastFrameSend = now;
+      sendFrame();
+    }
+    if (now - lastControlSend >= CONTROL_SEND_INTERVAL_MS) {
+      lastControlSend = now;
+      sendControl();
+    }
   }
 }

@@ -1,0 +1,7 @@
+{
+  "name": "ilda_protocol",
+  "version": "0.1.0",
+  "description": "Shared ESP-NOW packet definitions for the ESP32 ILDA laser control project",
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

@@ -1,0 +1,7 @@
+.pio/
+.pioenvs/
+.vscode/
+*.o
+.DS_Store
+__pycache__/
+*.pyc
